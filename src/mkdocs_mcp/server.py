@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
@@ -26,6 +27,29 @@ logger = logging.getLogger(__name__)
 
 _MAX_READ_SIZE = 10 * 1024 * 1024  # 10 MB
 _config_path_override: str | None = None
+
+
+def _read_doc_file(path: str, docs_dir: Path) -> str | dict:
+    """Validate, size-check, and read a documentation file.
+
+    Returns the raw content string on success, or an error dict on failure.
+    """
+    try:
+        full_path = validate_doc_path(path, docs_dir)
+    except ValueError as exc:
+        return {"error": f"Invalid path: {exc}"}
+
+    try:
+        if full_path.stat().st_size > _MAX_READ_SIZE:
+            return {"error": "File too large"}
+    except OSError:
+        return {"error": "File not found"}
+
+    try:
+        return full_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        logger.warning("Failed to read %s: %s", path, exc)
+        return {"error": "Failed to read file"}
 
 
 # ---------------------------------------------------------------------------
@@ -61,10 +85,11 @@ async def app_lifespan(server: FastMCP):
     else:
         config = MkDocsConfig.detect()
 
-    indexer = DocIndexer(config.docs_dir)
-    indexer.update_index()  # Incremental -- fast if index already exists
+    embedder = await asyncio.to_thread(_try_load_embedder)
 
-    embedder = _try_load_embedder()
+    indexer = DocIndexer(config.docs_dir)
+    await asyncio.to_thread(indexer.update_index, embedder)
+
     searcher = DocSearcher(indexer.db_path, embedder)
 
     try:
@@ -117,23 +142,10 @@ def read_document(path: str, ctx: Context) -> dict:
     """
     config: MkDocsConfig = ctx.lifespan_context["config"]
 
-    try:
-        full_path = validate_doc_path(path, config.docs_dir)
-    except ValueError as exc:
-        return {"error": f"Invalid path: {exc}"}
-
-    try:
-        stat = full_path.stat()
-        if stat.st_size > _MAX_READ_SIZE:
-            return {"error": "File too large"}
-    except OSError:
-        return {"error": "File not found"}
-
-    try:
-        raw_content = full_path.read_text(encoding="utf-8")
-    except OSError as exc:
-        logger.warning("Failed to read %s: %s", path, exc)
-        return {"error": "Failed to read file"}
+    result = _read_doc_file(path, config.docs_dir)
+    if isinstance(result, dict):
+        return result
+    raw_content = result
 
     frontmatter, body = parse_frontmatter(raw_content)
     headings_raw = extract_headings(body)
@@ -155,7 +167,7 @@ def read_document(path: str, ctx: Context) -> dict:
         title=title,
         description=description,
         categories=categories,
-        content=raw_content,
+        content=body,
         headings=headings,
         frontmatter=frontmatter,
         size=len(raw_content.encode("utf-8")),
@@ -178,24 +190,17 @@ def list_documents(ctx: Context, section: str | None = None) -> dict:
     searcher: DocSearcher = ctx.lifespan_context["searcher"]
     rows = searcher.list_documents(section)
 
-    config: MkDocsConfig = ctx.lifespan_context["config"]
     documents: list[dict[str, Any]] = []
     for row in rows:
-        path_str, title, description, categories_json, mtime = row
+        path_str, title, description, categories_json, mtime, size = row
         categories = json.loads(categories_json) if categories_json else []
-
-        file_path = config.docs_dir / path_str
-        try:
-            size = file_path.stat().st_size
-        except OSError:
-            size = 0
 
         doc_info = DocumentInfo(
             path=path_str,
             title=title or path_str,
             description=description,
             categories=categories,
-            size=size,
+            size=size or 0,
             mtime=mtime,
         )
         documents.append(doc_info.model_dump())
@@ -242,23 +247,10 @@ def get_document_outline(path: str, ctx: Context) -> dict:
     """
     config: MkDocsConfig = ctx.lifespan_context["config"]
 
-    try:
-        full_path = validate_doc_path(path, config.docs_dir)
-    except ValueError as exc:
-        return {"error": f"Invalid path: {exc}"}
-
-    try:
-        stat = full_path.stat()
-        if stat.st_size > _MAX_READ_SIZE:
-            return {"error": "File too large"}
-    except OSError:
-        return {"error": "File not found"}
-
-    try:
-        raw_content = full_path.read_text(encoding="utf-8")
-    except OSError as exc:
-        logger.warning("Failed to read %s: %s", path, exc)
-        return {"error": "Failed to read file"}
+    result = _read_doc_file(path, config.docs_dir)
+    if isinstance(result, dict):
+        return result
+    raw_content = result
 
     frontmatter, body = parse_frontmatter(raw_content)
     headings_raw = extract_headings(body)

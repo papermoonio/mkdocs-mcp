@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from mkdocs_mcp.indexer import DocIndexer
+from mkdocs_mcp.indexer import DocIndexer, scan_documents
 from mkdocs_mcp.models import IndexStatus
 
 
@@ -196,7 +196,7 @@ class TestBuildIndex:
         """Frontmatter fields (title, description, categories) are stored correctly."""
         indexer.build_index()
 
-        row = indexer._conn.execute(
+        row = indexer.repo._conn.execute(
             "SELECT title, description, categories FROM doc_metadata WHERE path = ?",
             ("index.md",),
         ).fetchone()
@@ -233,7 +233,7 @@ class TestBuildIndex:
         status = indexer.build_index()
 
         # Hidden file must not appear in metadata
-        row = indexer._conn.execute(
+        row = indexer.repo._conn.execute(
             "SELECT path FROM doc_metadata WHERE path LIKE '%.hidden%'",
         ).fetchone()
         assert row is None, "Hidden file was indexed but should have been skipped"
@@ -251,7 +251,7 @@ class TestBuildIndex:
 
         status = indexer.build_index()
 
-        row = indexer._conn.execute(
+        row = indexer.repo._conn.execute(
             "SELECT path FROM doc_metadata WHERE path = 'notes.txt'"
         ).fetchone()
         assert row is None, "Non-.md file was indexed but should have been skipped"
@@ -263,7 +263,7 @@ class TestBuildIndex:
 
         indexer.build_index()
 
-        row = indexer._conn.execute(
+        row = indexer.repo._conn.execute(
             "SELECT categories FROM doc_metadata WHERE path = ?",
             ("guide/getting-started.md",),
         ).fetchone()
@@ -311,7 +311,7 @@ class TestIncrementalIndex:
         assert status.skipped == 4
 
         # Verify new title is persisted
-        row = indexed._conn.execute(
+        row = indexed.repo._conn.execute(
             "SELECT title FROM doc_metadata WHERE path = 'index.md'"
         ).fetchone()
         assert row[0] == "Home (Updated)"
@@ -331,7 +331,7 @@ class TestIncrementalIndex:
         assert status.indexed == 1
         assert status.total_documents == 6
 
-        row = indexed._conn.execute(
+        row = indexed.repo._conn.execute(
             "SELECT title FROM doc_metadata WHERE path = 'new-page.md'"
         ).fetchone()
         assert row is not None
@@ -354,7 +354,7 @@ class TestIncrementalIndex:
     ) -> None:
         """A deleted file is removed from FTS5 — it no longer appears in MATCH queries."""
         # Confirm the glossary is currently searchable
-        rows_before = indexed._conn.execute(
+        rows_before = indexed.repo._conn.execute(
             "SELECT path FROM docs_fts WHERE docs_fts MATCH 'Glossary'"
         ).fetchall()
         paths_before = [r[0] for r in rows_before]
@@ -367,7 +367,7 @@ class TestIncrementalIndex:
         indexed.update_index()
 
         # FTS5 should no longer return the deleted doc
-        rows_after = indexed._conn.execute(
+        rows_after = indexed.repo._conn.execute(
             "SELECT path FROM docs_fts WHERE docs_fts MATCH 'Glossary'"
         ).fetchall()
         paths_after = [r[0] for r in rows_after]
@@ -430,12 +430,12 @@ class TestIndexPersistence:
         # Reopen with a brand-new DocIndexer
         idx2 = DocIndexer(docs_dir=tmp_docs_for_index, db_path=db_path)
         try:
-            count = idx2._conn.execute(
+            count = idx2.repo._conn.execute(
                 "SELECT COUNT(*) FROM doc_metadata"
             ).fetchone()[0]
             assert count == 5
 
-            row = idx2._conn.execute(
+            row = idx2.repo._conn.execute(
                 "SELECT title FROM doc_metadata WHERE path = 'index.md'"
             ).fetchone()
             assert row is not None
@@ -455,7 +455,7 @@ class TestIndexPersistence:
 
         idx2 = DocIndexer(docs_dir=tmp_docs_for_index, db_path=db_path)
         try:
-            rows = idx2._conn.execute(
+            rows = idx2.repo._conn.execute(
                 "SELECT path FROM docs_fts WHERE docs_fts MATCH 'documentation'"
             ).fetchall()
             assert len(rows) > 0, "Expected FTS results after reopen"
@@ -473,7 +473,7 @@ class TestFTS5Queries:
 
     def test_fts5_match_basic(self, indexed: DocIndexer) -> None:
         """A basic FTS5 MATCH query returns at least one result."""
-        rows = indexed._conn.execute(
+        rows = indexed.repo._conn.execute(
             "SELECT path FROM docs_fts WHERE docs_fts MATCH 'documentation'"
         ).fetchall()
         assert len(rows) >= 1
@@ -503,7 +503,7 @@ class TestFTS5Queries:
         try:
             idx.build_index()
 
-            rows = idx._conn.execute(
+            rows = idx.repo._conn.execute(
                 "SELECT path, bm25(docs_fts) AS rank FROM docs_fts "
                 "WHERE docs_fts MATCH 'zebrafish' "
                 "ORDER BY rank"  # lower (more negative) = better match
@@ -526,7 +526,7 @@ class TestFTS5Queries:
 
     def test_fts5_snippet(self, indexed: DocIndexer) -> None:
         """The FTS5 snippet() function returns a non-empty string with the query term."""
-        rows = indexed._conn.execute(
+        rows = indexed.repo._conn.execute(
             "SELECT snippet(docs_fts, 3, '<b>', '</b>', '...', 10) AS snip "
             "FROM docs_fts WHERE docs_fts MATCH 'documentation'"
         ).fetchall()
@@ -538,7 +538,7 @@ class TestFTS5Queries:
 
     def test_fts5_searchable(self, indexed: DocIndexer) -> None:
         """After build_index, the FTS5 table contains entries for all 5 documents."""
-        count = indexed._conn.execute(
+        count = indexed.repo._conn.execute(
             "SELECT COUNT(*) FROM docs_fts"
         ).fetchone()[0]
         assert count == 5
@@ -550,36 +550,36 @@ class TestFTS5Queries:
 
 
 class TestRemoveDocument:
-    """Tests for DocIndexer._remove_document()."""
+    """Tests for DocRepository.remove_document()."""
 
     def test_remove_from_all_tables(self, indexer: DocIndexer) -> None:
-        """A document removed via _remove_document is gone from BOTH doc_metadata and docs_fts."""
+        """A document removed via remove_document is gone from BOTH doc_metadata and docs_fts."""
         # Index a single document first
         single_doc = indexer.docs_dir / "index.md"
         indexer._index_document(single_doc)
-        indexer._conn.commit()
+        indexer.repo._conn.commit()
 
         rel_path = "index.md"
 
         # Verify it is in both tables before removal
-        meta_before = indexer._conn.execute(
+        meta_before = indexer.repo._conn.execute(
             "SELECT COUNT(*) FROM doc_metadata WHERE path = ?", (rel_path,)
         ).fetchone()[0]
-        fts_before = indexer._conn.execute(
+        fts_before = indexer.repo._conn.execute(
             "SELECT COUNT(*) FROM docs_fts WHERE path = ?", (rel_path,)
         ).fetchone()[0]
         assert meta_before == 1, "Should be in doc_metadata before removal"
         assert fts_before == 1, "Should be in docs_fts before removal"
 
         # Remove
-        indexer._remove_document(rel_path)
-        indexer._conn.commit()
+        indexer.repo.remove_document(rel_path)
+        indexer.repo._conn.commit()
 
         # Verify gone from both tables
-        meta_after = indexer._conn.execute(
+        meta_after = indexer.repo._conn.execute(
             "SELECT COUNT(*) FROM doc_metadata WHERE path = ?", (rel_path,)
         ).fetchone()[0]
-        fts_after = indexer._conn.execute(
+        fts_after = indexer.repo._conn.execute(
             "SELECT COUNT(*) FROM docs_fts WHERE path = ?", (rel_path,)
         ).fetchone()[0]
         assert meta_after == 0, "Should be gone from doc_metadata after removal"
@@ -592,12 +592,12 @@ class TestRemoveDocument:
 
 
 class TestScanDocuments:
-    """Tests for DocIndexer._scan_documents()."""
+    """Tests for the scan_documents() module-level function."""
 
     def test_scan_skips_symlinks_outside(
         self, tmp_docs_for_index: Path, indexer: DocIndexer, tmp_path: Path
     ) -> None:
-        """Symlinks pointing outside the docs directory are skipped by _scan_documents."""
+        """Symlinks pointing outside the docs directory are skipped by scan_documents."""
         # Create a real .md file outside docs_dir
         outside_file = tmp_path / "outside.md"
         outside_file.write_text(
@@ -609,7 +609,7 @@ class TestScanDocuments:
         symlink_path = tmp_docs_for_index / "escape_link.md"
         symlink_path.symlink_to(outside_file)
 
-        scanned = indexer._scan_documents()
+        scanned = scan_documents(indexer.docs_dir)
         scanned_paths = [str(p) for p in scanned]
 
         assert not any("escape_link" in p for p in scanned_paths), (

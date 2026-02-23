@@ -53,23 +53,14 @@ def validate_doc_path(path: str, docs_dir: Path) -> Path:
     if '..' in parts:
         raise ValueError("Path traversal ('..') is not allowed")
 
-    # Resolve docs_dir FIRST to a canonical path
+    # Build the candidate path (unresolved, for symlink detection)
     docs_resolved = docs_dir.resolve()
-
-    # Build the unresolved path (for symlink detection)
     unresolved = docs_resolved / decoded
 
-    # Check symlink BEFORE resolving — resolve() follows symlinks,
-    # making is_symlink() always False on the resolved result
-    if unresolved.is_symlink():
-        target = unresolved.resolve()
-        if not target.is_relative_to(docs_resolved):
-            raise ValueError("Symlink target escapes the documentation directory")
-
-    # Now resolve for containment check
-    full_path = unresolved.resolve()
-    if not full_path.is_relative_to(docs_resolved):
+    if not is_path_contained(unresolved, docs_dir):
         raise ValueError("Path escapes the documentation directory")
+
+    full_path = unresolved.resolve()
 
     # Must exist
     if not full_path.exists():
@@ -80,6 +71,21 @@ def validate_doc_path(path: str, docs_dir: Path) -> Path:
         raise ValueError("Only .md files can be accessed")
 
     return full_path
+
+
+def is_path_contained(path: Path, root: Path) -> bool:
+    """Check that *path* is safely contained within *root*.
+
+    Returns ``False`` if *path* is a symlink whose target escapes *root*,
+    or if the resolved *path* is not under *root*.
+    """
+    root_resolved = root.resolve()
+
+    if path.is_symlink():
+        if not path.resolve().is_relative_to(root_resolved):
+            return False
+
+    return path.resolve().is_relative_to(root_resolved)
 
 
 # ---------------------------------------------------------------------------
@@ -100,7 +106,7 @@ def parse_frontmatter(content: str) -> tuple[dict[str, Any], str]:
 
     # Must start with '---' on the first line
     if not text.startswith('---'):
-        return {}, content
+        return {}, text
 
     # Find the closing '---'
     # Look for '---' on its own line after the opening
@@ -109,7 +115,7 @@ def parse_frontmatter(content: str) -> tuple[dict[str, Any], str]:
         # Check for '---' at end of file (frontmatter-only)
         end_match = re.search(r'\n---\s*$', text[3:])
         if end_match is None:
-            return {}, content
+            return {}, text
         yaml_text = text[3:3 + end_match.start()]
         body = ''
     else:
@@ -119,11 +125,11 @@ def parse_frontmatter(content: str) -> tuple[dict[str, Any], str]:
     try:
         parsed = yaml.safe_load(yaml_text)
     except yaml.YAMLError:
-        return {}, content
+        return {}, text
 
     # Only accept dict frontmatter
     if not isinstance(parsed, dict):
-        return {}, body if body else content
+        return {}, body if body else text
 
     return parsed, body
 
@@ -225,19 +231,23 @@ class _HTMLStripper(HTMLParser):
         return text.strip()
 
 
-def markdown_to_text(content: str) -> str:
+def markdown_to_text(content: str, md: markdown.Markdown | None = None) -> str:
     """Convert markdown to plain text for FTS indexing.
 
-    - Strips frontmatter first
-    - Uses python-markdown to render HTML, then strips tags
-    - Preserves spacing between block-level elements (no smashed text)
-    - Includes code block content (searchable)
+    Args:
+        content: Raw markdown content (with optional frontmatter).
+        md: Optional reusable Markdown instance.  When provided the
+            caller is responsible for calling ``md.reset()`` between
+            documents (this function does NOT reset automatically so
+            the caller controls the lifecycle).  When *None*, a fresh
+            instance is created per call.
     """
     # Remove frontmatter
     _, body = parse_frontmatter(content)
 
     # Convert markdown to HTML
-    md = markdown.Markdown(extensions=['fenced_code', 'tables'])
+    if md is None:
+        md = markdown.Markdown(extensions=['fenced_code', 'tables'])
     html = md.convert(body)
 
     # Strip HTML tags, preserving block spacing

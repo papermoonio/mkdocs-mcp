@@ -31,7 +31,7 @@ class DocumentContent(BaseModel):
     title: str
     description: str | None = None
     categories: list[str] = Field(default_factory=list)
-    content: str = Field(description="Raw markdown content")
+    content: str = Field(description="Markdown body content (frontmatter stripped)")
     headings: list[HeadingInfo] = Field(default_factory=list)
     frontmatter: dict[str, Any] = Field(default_factory=dict)
     size: int
@@ -42,7 +42,7 @@ class SearchMatch(BaseModel):
 
     path: str
     title: str
-    score: float = Field(description="Relevance score (higher is better)")
+    score: float = Field(description="Relevance score normalized to 0.0-1.0 (higher is better)")
     snippet: str = Field(description="Text snippet with match context")
     search_method: str = Field(description="'keyword', 'vector', or 'hybrid'")
 

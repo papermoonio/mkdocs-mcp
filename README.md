@@ -90,7 +90,8 @@ Search documentation using keyword, semantic, or hybrid search.
 | `search_type` | str    | `"hybrid"` | `"keyword"`, `"vector"`, or `"hybrid"`       |
 | `max_results` | int    | `10`       | Maximum results to return (1--100)           |
 
-Returns ranked results with path, title, relevance score, and text snippet.
+Returns ranked results with path, title, relevance score (normalized 0.0--1.0),
+and text snippet.
 
 ### read_document
 
@@ -100,8 +101,8 @@ Read a documentation file by its relative path.
 |-----------|------|------------|----------------------------------------------------|
 | `path`    | str  | (required) | Relative path from docs dir (e.g. `guide/setup.md`) |
 
-Returns the full markdown content, parsed frontmatter, heading structure, and
-file metadata.
+Returns the markdown body (frontmatter stripped), parsed frontmatter as a
+separate field, heading structure, and file metadata.
 
 ### list_documents
 
@@ -134,12 +135,13 @@ Returns the document title and a list of headings with level, text, and anchor.
 
 ```
 src/mkdocs_mcp/
-  config.py    -- MkDocs config detection and nav parsing
-  indexer.py   -- SQLite FTS5 index with incremental updates
-  searcher.py  -- Keyword, vector, and hybrid search
-  server.py    -- FastMCP server with 5 tool definitions
-  utils.py     -- Path validation, frontmatter parsing, text extraction
-  models.py    -- Pydantic response models
+  config.py      -- MkDocs config detection and nav parsing
+  repository.py  -- SQLite schema and CRUD operations
+  indexer.py     -- Index orchestration with incremental updates
+  searcher.py    -- Keyword, vector, and hybrid search
+  server.py      -- FastMCP server with 5 tool definitions
+  utils.py       -- Path validation, frontmatter parsing, text extraction
+  models.py      -- Pydantic response models
 ```
 
 At startup the server reads `mkdocs.yml`, scans the docs directory, and

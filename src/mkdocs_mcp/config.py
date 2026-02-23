@@ -9,6 +9,7 @@ from typing import Any
 import yaml
 
 from mkdocs_mcp.models import NavItem
+from mkdocs_mcp.utils import is_path_contained
 
 
 _MAX_WALK_LEVELS = 10
@@ -136,12 +137,12 @@ class MkDocsConfig:
         if not isinstance(extra, dict):
             extra = {}
 
-        # Navigation: prefer .nav.yml files if awesome-nav plugin is used,
-        # otherwise fall back to nav in mkdocs.yml, then to directory listing
-        if "awesome-nav" in plugins and docs_dir.is_dir():
-            nav = parse_nav_yml(docs_dir)
-        elif "nav" in raw and isinstance(raw["nav"], list):
+        # Navigation: explicit nav in mkdocs.yml always wins, then fall back
+        # to .nav.yml files if awesome-nav plugin is used, then dir listing
+        if "nav" in raw and isinstance(raw["nav"], list):
             nav = parse_mkdocs_nav(raw["nav"], docs_dir)
+        elif "awesome-nav" in plugins and docs_dir.is_dir():
+            nav = parse_nav_yml(docs_dir)
         else:
             nav = _nav_from_directory(docs_dir)
 
@@ -252,12 +253,13 @@ def _parse_nav_entry(
     title: str, target: str, docs_dir: Path, rel_dir: Path
 ) -> NavItem | None:
     """Parse a single nav entry from .nav.yml."""
-    target_path = (docs_dir / rel_dir / target).resolve()
-    docs_resolved = docs_dir.resolve()
+    target_path = (docs_dir / rel_dir / target)
 
     # Containment check: skip entries that escape docs_dir
-    if not target_path.is_relative_to(docs_resolved):
+    if not is_path_contained(target_path, docs_dir):
         return None
+
+    target_path = target_path.resolve()
 
     if target_path.is_file() and target.endswith(".md"):
         rel_path = str(rel_dir / target)
