@@ -10,4 +10,4 @@ build/
 *.db
 .venv/
 .env
-.claude
+.claude/
