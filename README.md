@@ -154,7 +154,7 @@ lists using Reciprocal Rank Fusion.
 
 ```bash
 git clone https://github.com/aspect-build/mkdocs-mcp.git
-cd papermoon-mkdocs-mcp
+cd mkdocs-mcp
 pip install -e ".[dev]"
 pytest
 ```
