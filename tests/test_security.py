@@ -1,4 +1,4 @@
-"""Security-focused tests for the mkdocs-mcp server tools.
+"""Security-focused tests for the papermoon-mkdocs-mcp server tools.
 
 Validates that path traversal, symlink escape, non-markdown access,
 SQL injection, FTS5 operator injection, and parameter validation are

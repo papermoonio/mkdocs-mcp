@@ -1,4 +1,4 @@
-# mkdocs-mcp
+# papermoon-mkdocs-mcp
 
 A lightweight MCP server for MkDocs documentation sites. Reads markdown files
 directly from disk, provides full-text and optional semantic search, and exposes
@@ -19,13 +19,13 @@ project structure through the Model Context Protocol.
 ## Installation
 
 ```bash
-pip install mkdocs-mcp
+pip install papermoon-mkdocs-mcp
 ```
 
 To enable vector search:
 
 ```bash
-pip install mkdocs-mcp[vector]
+pip install papermoon-mkdocs-mcp[vector]
 ```
 
 ## Quick Start
@@ -34,13 +34,13 @@ Run from the root of any MkDocs project (where `mkdocs.yml` lives):
 
 ```bash
 cd /path/to/your/mkdocs-project
-mkdocs-mcp
+papermoon-mkdocs-mcp
 ```
 
 Or point to a specific config file:
 
 ```bash
-mkdocs-mcp --config /path/to/mkdocs.yml
+papermoon-mkdocs-mcp --config /path/to/mkdocs.yml
 ```
 
 The server auto-detects `mkdocs.yml` in the current directory when `--config`
@@ -56,7 +56,7 @@ Add to your Claude Desktop configuration file:
 {
   "mcpServers": {
     "mkdocs": {
-      "command": "mkdocs-mcp",
+      "command": "papermoon-mkdocs-mcp",
       "args": ["--config", "/path/to/mkdocs.yml"]
     }
   }
@@ -71,7 +71,7 @@ Add to `.mcp.json` in your project root:
 {
   "mcpServers": {
     "mkdocs": {
-      "command": "mkdocs-mcp",
+      "command": "papermoon-mkdocs-mcp",
       "args": ["--config", "/path/to/mkdocs.yml"]
     }
   }
@@ -154,7 +154,7 @@ lists using Reciprocal Rank Fusion.
 
 ```bash
 git clone https://github.com/aspect-build/mkdocs-mcp.git
-cd mkdocs-mcp
+cd papermoon-mkdocs-mcp
 pip install -e ".[dev]"
 pytest
 ```

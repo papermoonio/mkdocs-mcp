@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "mkdocs-mcp"
+name = "papermoon-mkdocs-mcp"
 version = "0.1.0b1"
 description = "A lightweight MCP server for MkDocs documentation sites"
 readme = "README.md"
@@ -37,10 +37,10 @@ dev = [
 ]
 
 [project.scripts]
-mkdocs-mcp = "mkdocs_mcp.server:main"
+papermoon-mkdocs-mcp = "mkdocs_mcp.server:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/mkdocs_mcp"]
+packages = ["mkdocs_mcp"]
 
 [tool.hatch.build]
 sources = ["src"]
