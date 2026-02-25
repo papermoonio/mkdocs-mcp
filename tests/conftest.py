@@ -1,4 +1,4 @@
-"""Shared fixtures for mkdocs-mcp tests."""
+"""Shared fixtures for papermoon-mkdocs-mcp tests."""
 
 from __future__ import annotations
 
@@ -69,7 +69,7 @@ def tmp_docs_dir(tmp_path: Path) -> Path:
         "\n"
         "```bash\n"
         "# Not a heading — this is inside a code block\n"
-        "pip install mkdocs-mcp\n"
+        "pip install papermoon-mkdocs-mcp\n"
         "```\n"
         "\n"
         "## Installation\n"
