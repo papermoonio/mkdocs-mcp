@@ -46,6 +46,28 @@ mkdocs-mcp --config /path/to/mkdocs.yml
 The server auto-detects `mkdocs.yml` in the current directory when `--config`
 is omitted.
 
+### Transport Options
+
+By default the server uses **stdio** transport. You can switch to a network
+transport for remote or multi-client setups:
+
+```bash
+# Streamable HTTP (recommended for network access)
+mkdocs-mcp --transport streamable-http --host 0.0.0.0 --port 9000
+
+# SSE (legacy client compatibility)
+mkdocs-mcp --transport sse --port 8080
+```
+
+| Flag            | Default       | Description                                      |
+|-----------------|---------------|--------------------------------------------------|
+| `--transport`   | `stdio`       | `stdio`, `sse`, or `streamable-http`             |
+| `--host`        | `127.0.0.1`   | Bind address (network transports only)           |
+| `--port`        | `8000`        | Bind port (network transports only)              |
+
+> **Security note:** When binding to a non-loopback address, place the server
+> behind a reverse proxy (e.g. nginx, Caddy) that terminates TLS.
+
 ## MCP Client Configuration
 
 ### Claude Desktop
@@ -62,6 +84,21 @@ Add to your Claude Desktop configuration file:
   }
 }
 ```
+
+**Note:** If Claude Desktop can't find the command (`Failed to spawn process: No such file or directory`), use the full path to the executable instead of just `mkdocs-mcp`:
+
+```json
+{
+  "mcpServers": {
+    "mkdocs": {
+      "command": "/path/to/.venv/bin/mkdocs-mcp",
+      "args": ["--config", "/path/to/mkdocs.yml"]
+    }
+  }
+}
+```
+
+This is common when the package is installed in a virtual environment whose `bin/` directory isn't in Claude Desktop's PATH.
 
 ### Claude Code / VS Code
 
