@@ -284,10 +284,40 @@ def main() -> None:
         default=None,
         help="Path to mkdocs.yml (auto-detected if omitted)",
     )
+    parser.add_argument(
+        "--transport",
+        type=str,
+        default="stdio",
+        help="Transport protocol: stdio, sse, or streamable-http (default: stdio)",
+    )
+    parser.add_argument(
+        "--host",
+        type=str,
+        default="127.0.0.1",
+        help="Host to bind to when using network transports (default: 127.0.0.1)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port to bind to when using network transports (default: 8000)",
+    )
     args = parser.parse_args()
 
     if args.config:
         global _config_path_override
         _config_path_override = args.config
 
-    mcp.run()
+    run_kwargs: dict[str, Any] = {"transport": args.transport}
+    if args.transport != "stdio":
+        run_kwargs["host"] = args.host
+        run_kwargs["port"] = args.port
+        if args.host not in ("127.0.0.1", "localhost", "::1"):
+            logging.warning(
+                "Binding to non-loopback address %s without TLS. "
+                "Use a reverse proxy (e.g. nginx) to terminate TLS "
+                "when exposing the server to a network.",
+                args.host,
+            )
+
+    mcp.run(**run_kwargs)
