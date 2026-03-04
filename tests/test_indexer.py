@@ -61,7 +61,7 @@ def tmp_docs_for_index(tmp_path: Path) -> Path:
         "\n"
         "```bash\n"
         "# install the package\n"
-        "pip install mkdocs-mcp\n"
+        "pip install papermoon-mkdocs-mcp\n"
         "```\n"
         "\n"
         "## Prerequisites\n"

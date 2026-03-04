@@ -1,4 +1,4 @@
-"""MCP tool integration tests for the mkdocs-mcp server.
+"""MCP tool integration tests for the papermoon-mkdocs-mcp server.
 
 Tests each of the five MCP tools (search, read_document, list_documents,
 get_project_info, get_document_outline) by calling the underlying function

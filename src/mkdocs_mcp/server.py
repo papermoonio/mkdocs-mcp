@@ -103,7 +103,7 @@ async def app_lifespan(server: FastMCP):
         indexer.close()
 
 
-mcp = FastMCP("mkdocs-mcp", lifespan=app_lifespan)
+mcp = FastMCP("papermoon-mkdocs-mcp", lifespan=app_lifespan)
 
 
 # ---------------------------------------------------------------------------
