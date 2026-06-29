@@ -210,6 +210,13 @@ def parse_nav_yml(
     if not isinstance(nav_list, list):
         return _nav_from_directory(docs_dir, rel_dir)
 
+    return _parse_nav_entries(nav_list, docs_dir, rel_dir)
+
+
+def _parse_nav_entries(
+    nav_list: list, docs_dir: Path, rel_dir: Path
+) -> list[NavItem]:
+    """Parse a list of .nav.yml nav entries into NavItems."""
     items: list[NavItem] = []
     for entry in nav_list:
         if isinstance(entry, dict):
@@ -250,9 +257,19 @@ def parse_mkdocs_nav(
 
 
 def _parse_nav_entry(
-    title: str, target: str, docs_dir: Path, rel_dir: Path
+    title: str, target: str | list, docs_dir: Path, rel_dir: Path
 ) -> NavItem | None:
     """Parse a single nav entry from .nav.yml."""
+    if isinstance(target, list):
+        # Inline list of child entries — a section defined inline rather than
+        # via a subdirectory. Children share the same rel_dir as the parent.
+        children = _parse_nav_entries(target, docs_dir, rel_dir)
+        return NavItem(title=title, children=children)
+
+    if not isinstance(target, str):
+        # Unexpected shape (e.g. dict, None) — skip defensively rather than crash.
+        return None
+
     target_path = (docs_dir / rel_dir / target)
 
     # Containment check: skip entries that escape docs_dir
