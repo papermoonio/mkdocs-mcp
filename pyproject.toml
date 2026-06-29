@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "papermoon-mkdocs-mcp"
-version = "0.1.0b2"
+version = "0.1.1"
 description = "A lightweight MCP server for MkDocs documentation sites"
 readme = "README.md"
 license = "BSD-2-Clause"
