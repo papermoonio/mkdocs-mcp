@@ -1,0 +1,315 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump type"
+        required: true
+        type: choice
+        options:
+          - alpha
+          - beta
+          - rc
+          - stable
+          - patch
+          - minor
+          - major
+      version_override:
+        description: "Exact version (overrides bump type if set)"
+        required: false
+        type: string
+
+# Principle of least privilege — each job declares only what it needs
+permissions: {}
+
+# Prevent concurrent releases from racing on branch/tag/release creation
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 0: Compute the next version from pyproject.toml + bump type
+  # ---------------------------------------------------------------------------
+  compute-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.compute.outputs.version }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install packaging
+        run: pip install packaging
+
+      - name: Compute next version
+        id: compute
+        shell: python
+        env:
+          INPUT_BUMP: ${{ inputs.bump }}
+          INPUT_VERSION_OVERRIDE: ${{ inputs.version_override }}
+        run: |
+          import os, sys, tomllib
+          from packaging.version import Version
+
+          # --- read current version from pyproject.toml ---
+          with open("pyproject.toml", "rb") as f:
+              current_str = tomllib.load(f)["project"]["version"]
+          current = Version(current_str)
+          print(f"Current version: {current}")
+
+          override = os.environ.get("INPUT_VERSION_OVERRIDE", "").strip()
+          bump = os.environ["INPUT_BUMP"]
+
+          if override:
+              # Validate that the override is a legal PEP 440 version
+              new_version = str(Version(override))
+              print(f"Using version override: {new_version}")
+          else:
+              major, minor, micro = current.major, current.minor, current.micro
+              pre = current.pre  # e.g. ("a", 11), ("b", 2), ("rc", 1), or None
+
+              if bump == "alpha":
+                  if pre is None:
+                      # stable -> next patch alpha 1
+                      new_version = f"{major}.{minor}.{micro + 1}a1"
+                  elif pre[0] == "a":
+                      new_version = f"{major}.{minor}.{micro}a{pre[1] + 1}"
+                  else:
+                      print(f"::error::Cannot bump to alpha from {pre[0]} pre-release (would go backwards)")
+                      sys.exit(1)
+
+              elif bump == "beta":
+                  if pre is None:
+                      new_version = f"{major}.{minor}.{micro + 1}b1"
+                  elif pre[0] == "a":
+                      new_version = f"{major}.{minor}.{micro}b1"
+                  elif pre[0] == "b":
+                      new_version = f"{major}.{minor}.{micro}b{pre[1] + 1}"
+                  else:
+                      print(f"::error::Cannot bump to beta from {pre[0]} pre-release (would go backwards)")
+                      sys.exit(1)
+
+              elif bump == "rc":
+                  if pre is None:
+                      new_version = f"{major}.{minor}.{micro + 1}rc1"
+                  elif pre[0] in ("a", "b"):
+                      new_version = f"{major}.{minor}.{micro}rc1"
+                  elif pre[0] == "rc":
+                      new_version = f"{major}.{minor}.{micro}rc{pre[1] + 1}"
+
+              elif bump == "stable":
+                  if pre is not None:
+                      new_version = f"{major}.{minor}.{micro}"
+                  else:
+                      print("::error::Version is already stable — nothing to promote")
+                      sys.exit(1)
+
+              elif bump == "patch":
+                  new_version = f"{major}.{minor}.{micro + 1}"
+
+              elif bump == "minor":
+                  new_version = f"{major}.{minor + 1}.0"
+
+              elif bump == "major":
+                  new_version = f"{major + 1}.0.0"
+
+              else:
+                  print(f"::error::Unknown bump type: {bump}")
+                  sys.exit(1)
+
+              print(f"Bump type: {bump}")
+              print(f"Computed version: {new_version}")
+
+          # Write to GITHUB_OUTPUT
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"version={new_version}\n")
+
+      - name: Print computed version
+        run: |
+          echo "============================================"
+          echo "  Computed release version: ${{ steps.compute.outputs.version }}"
+          echo "============================================"
+
+  # ---------------------------------------------------------------------------
+  # Job 1: Bump the version in pyproject.toml, open a PR, and merge it
+  # ---------------------------------------------------------------------------
+  bump-version:
+    runs-on: ubuntu-latest
+    needs: compute-version
+    outputs:
+      pr-number: ${{ steps.merge-pr.outputs.pr-number }}
+      merge-sha: ${{ steps.merge-pr.outputs.merge-sha }}
+    steps:
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Configure git user
+        run: |
+          git config user.name "${{ steps.app-token.outputs.app-slug }}[bot]"
+          git config user.email "${{ secrets.APP_ID }}+${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com"
+
+      - name: Create release branch and bump version
+        run: |
+          git checkout -b "release/v${{ needs.compute-version.outputs.version }}"
+          sed -i 's/^version = ".*"/version = "${{ needs.compute-version.outputs.version }}"/' pyproject.toml
+          git add pyproject.toml
+          git commit -m "bump version to ${{ needs.compute-version.outputs.version }}"
+          git push origin "release/v${{ needs.compute-version.outputs.version }}"
+
+      - name: Create and merge release PR
+        id: merge-pr
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          PR_URL=$(gh pr create \
+            --base main \
+            --head "release/v${{ needs.compute-version.outputs.version }}" \
+            --title "Release v${{ needs.compute-version.outputs.version }}" \
+            --body "Bump version to \`${{ needs.compute-version.outputs.version }}\` and publish to PyPI.")
+          gh pr merge "$PR_URL" --squash --admin --delete-branch
+          PR_NUMBER=$(gh pr view "$PR_URL" --json number --jq '.number')
+          MERGE_SHA=$(gh pr view "$PR_URL" --json mergeCommit --jq '.mergeCommit.oid')
+          echo "pr-number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "merge-sha=$MERGE_SHA" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Create an annotated tag and GitHub Release on the merged main
+  # ---------------------------------------------------------------------------
+  create-release:
+    runs-on: ubuntu-latest
+    needs:
+      - compute-version
+      - bump-version
+    outputs:
+      tag: v${{ needs.compute-version.outputs.version }}
+    steps:
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Checkout merge commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.bump-version.outputs.merge-sha }}
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Configure git user
+        run: |
+          git config user.name "${{ steps.app-token.outputs.app-slug }}[bot]"
+          git config user.email "${{ secrets.APP_ID }}+${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com"
+
+      - name: Create and push tag
+        run: |
+          git tag -a "v${{ needs.compute-version.outputs.version }}" -m "Release v${{ needs.compute-version.outputs.version }}"
+          git push origin "v${{ needs.compute-version.outputs.version }}"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh release create "v${{ needs.compute-version.outputs.version }}" \
+            --title "v${{ needs.compute-version.outputs.version }}" \
+            --generate-notes
+
+  # ---------------------------------------------------------------------------
+  # Job 3: Build sdist and wheel
+  # ---------------------------------------------------------------------------
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs:
+      - compute-version
+      - create-release
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v6
+        with:
+          ref: v${{ needs.compute-version.outputs.version }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Build distributions
+        run: |
+          pip install build
+          python -m build
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-package-distributions
+          path: dist/*
+
+  # ---------------------------------------------------------------------------
+  # Job 4: Publish to PyPI via Trusted Publishing (OIDC)
+  # ---------------------------------------------------------------------------
+  publish-to-pypi:
+    runs-on: ubuntu-latest
+    needs:
+      - compute-version
+      - build
+    environment:
+      name: pypi
+      url: https://pypi.org/project/papermoon-mkdocs-mcp/
+    permissions:
+      id-token: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  # ---------------------------------------------------------------------------
+  # Job 5: Attach built distributions to the GitHub Release
+  # ---------------------------------------------------------------------------
+  attach-release-assets:
+    runs-on: ubuntu-latest
+    needs:
+      - compute-version
+      - build
+    permissions:
+      contents: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Upload assets to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "v${{ needs.compute-version.outputs.version }}" dist/* --clobber \
+            --repo "${{ github.repository }}"
