@@ -495,6 +495,62 @@ class TestParseNavYml:
         assert items[0].path == "about.md"
         assert items[0].title == "About"
 
+    def test_parse_nav_yml_inline_list_section(self, tmp_path: Path) -> None:
+        """Inline-list nav values become section headers with nested children.
+
+        Regression test: previously an inline list target crashed with
+        ``TypeError: unsupported operand type(s) for /: 'PosixPath' and 'list'``.
+        """
+        docs = tmp_path / "docs"
+        docs.mkdir()
+
+        (docs / "index.md").write_text("# Home\n", encoding="utf-8")
+
+        reference = docs / "reference"
+        reference.mkdir()
+        (reference / "intro.md").write_text("# Intro\n", encoding="utf-8")
+        advanced = reference / "advanced"
+        advanced.mkdir()
+        (advanced / "setup.md").write_text("# Setup\n", encoding="utf-8")
+
+        (docs / ".nav.yml").write_text(
+            "nav:\n"
+            "  - 'Home': index.md\n"
+            "  - 'Reference':\n"
+            "      - 'Intro': reference/intro.md\n"
+            "      - 'Advanced':\n"
+            "          - reference/advanced/setup.md\n",
+            encoding="utf-8",
+        )
+
+        items = parse_nav_yml(docs)
+
+        assert len(items) == 2
+
+        home = items[0]
+        assert home.title == "Home"
+        assert home.path == "index.md"
+
+        reference_item = items[1]
+        assert reference_item.title == "Reference"
+        # Section header defined inline has no path of its own.
+        assert reference_item.path is None
+        assert len(reference_item.children) == 2
+
+        intro = reference_item.children[0]
+        assert intro.title == "Intro"
+        assert intro.path == "reference/intro.md"
+
+        # Nested inline list — the previously-crashing nested shape.
+        advanced_item = reference_item.children[1]
+        assert advanced_item.title == "Advanced"
+        assert advanced_item.path is None
+        assert len(advanced_item.children) == 1
+
+        setup = advanced_item.children[0]
+        # Bare string leaf inside the nested inline list.
+        assert setup.path == "reference/advanced/setup.md"
+
     def test_parse_nav_yml_invalid_yaml_falls_back(self, tmp_path: Path) -> None:
         """Falls back to directory listing when .nav.yml contains invalid YAML."""
         docs = tmp_path / "docs"
