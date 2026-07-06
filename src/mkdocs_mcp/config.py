@@ -46,9 +46,8 @@ def _handle_env_tag(loader: yaml.Loader, node: yaml.Node) -> Any:
 
 
 # Register handlers for mkdocs-specific tags
-_SafeMkDocsLoader.add_multi_constructor(
-    "tag:yaml.org,2002:python/name:", _handle_python_name
-)
+for tag in ("tag:yaml.org,2002:python/name:", "tag:yaml.org,2002:python/object/apply:"):
+    _SafeMkDocsLoader.add_multi_constructor(tag, _handle_python_name)
 _SafeMkDocsLoader.add_constructor("!ENV", _handle_env_tag)
 
 
