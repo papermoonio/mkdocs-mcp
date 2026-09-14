@@ -120,8 +120,24 @@ async def app_lifespan(server: FastMCP):
         searcher.close()
         indexer.close()
 
+INSTRUCTIONS = """This server provides read-only access to an MkDocs documentation project.
 
-mcp = FastMCP("papermoon-mkdocs-mcp", lifespan=app_lifespan)
+For documentation questions, use `search` to find relevant documents, then use `read_document`
+to inspect the source before answering. Do not rely solely on search-result snippets when the
+full document is needed for an accurate answer.
+
+Use `get_project_info` and `list_documents` to explore the documentation structure.
+Use `get_document_outline` to locate relevant sections within a document.
+
+Prefer hybrid search for general questions and keyword search for exact terms such as
+identifiers, configuration options, commands, and error messages. If the initial search is
+insufficient, try alternative terminology or related queries.
+
+Base answers on the available documentation. If the documentation does not contain enough
+information to answer confidently, say so rather than guessing.
+"""
+
+mcp = FastMCP(name="papermoon-mkdocs-mcp", instructions=INSTRUCTIONS, lifespan=app_lifespan)
 
 
 # ---------------------------------------------------------------------------
