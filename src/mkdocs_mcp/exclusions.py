@@ -2,15 +2,18 @@
 
 Some markdown files in a docs tree are not worth exposing over MCP —
 drafts, internal runbooks, generated scratch files. ``mkdocs.yml`` may
-carry an ``mcp_exclude`` list of gitignore-style patterns:
+carry an ``mcp_exclude`` list of gitignore-style patterns, nested under
+``extra`` so MkDocs' own config schema (and ``--strict`` mode) doesn't
+flag it as an unrecognised key:
 
 .. code-block:: yaml
 
-    mcp_exclude:
-      - drafts/
-      - internal/**
-      - "*-scratch.md"
-      - "!internal/public.md"
+    extra:
+      mcp_exclude:
+        - drafts/
+        - internal/**
+        - "*-scratch.md"
+        - "!internal/public.md"
 
 The rules are applied at every point where a document could otherwise
 become visible — the search index, the navigation tree, and direct reads —

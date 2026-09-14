@@ -158,6 +158,15 @@ class TestFromConfig:
 
 
 _EXCLUDE_BLOCK = """\
+extra:
+  mcp_exclude:
+    - drafts/
+    - internal/**
+    - "*-scratch.md"
+    - "!internal/public.md"
+"""
+
+_LEGACY_EXCLUDE_BLOCK = """\
 mcp_exclude:
   - drafts/
   - internal/**
@@ -230,6 +239,40 @@ class TestConfigLevelExclusion:
 
         assert config.exclusions.is_excluded("drafts/wip.md") is True
         assert config.exclusions.is_excluded("index.md") is False
+
+    def test_legacy_top_level_key_still_honoured(self, tmp_path: Path) -> None:
+        """A bare top-level mcp_exclude still works as a deprecated fallback."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        _write_docs(docs)
+        (tmp_path / "mkdocs.yml").write_text(
+            "site_name: Legacy\n" + _LEGACY_EXCLUDE_BLOCK, encoding="utf-8"
+        )
+
+        config = MkDocsConfig.from_file(tmp_path / "mkdocs.yml")
+
+        assert config.exclusions.is_excluded("drafts/wip.md") is True
+        assert config.exclusions.is_excluded("index.md") is False
+
+    def test_extra_key_takes_precedence_over_legacy(self, tmp_path: Path) -> None:
+        """If both are present, the new extra.mcp_exclude location wins."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        _write_docs(docs)
+        (tmp_path / "mkdocs.yml").write_text(
+            "site_name: Both\n"
+            "mcp_exclude:\n"
+            "  - drafts/\n"
+            "extra:\n"
+            "  mcp_exclude:\n"
+            "    - internal/**\n",
+            encoding="utf-8",
+        )
+
+        config = MkDocsConfig.from_file(tmp_path / "mkdocs.yml")
+
+        assert config.exclusions.is_excluded("internal/runbook.md") is True
+        assert config.exclusions.is_excluded("drafts/wip.md") is False
 
     def test_nav_from_directory_omits_excluded(self, excl_project: Path) -> None:
         config = MkDocsConfig.from_file(excl_project / "mkdocs.yml")

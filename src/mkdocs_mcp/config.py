@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,8 @@ from mkdocs_mcp.exclusions import ExclusionRules
 from mkdocs_mcp.models import NavItem
 from mkdocs_mcp.utils import is_path_contained
 
+
+logger = logging.getLogger(__name__)
 
 _MAX_WALK_LEVELS = 10
 
@@ -157,8 +160,24 @@ class MkDocsConfig:
         if not isinstance(extra, dict):
             extra = {}
 
-        # Documents to keep off the MCP surface entirely
-        exclusions = ExclusionRules.from_config(raw.get("mcp_exclude"))
+        # Documents to keep off the MCP surface entirely. Lives under 'extra'
+        # because MkDocs validates its own top-level config keys against a
+        # fixed schema — a bare top-level 'mcp_exclude' trips 'Unrecognised
+        # configuration name' warnings (and hard failures under --strict),
+        # since this tool isn't a registered MkDocs plugin. 'extra' is the
+        # one top-level key MkDocs leaves open for arbitrary data. A bare
+        # top-level 'mcp_exclude' is still honoured for one release cycle
+        # as a deprecated fallback.
+        exclude_raw = extra.get("mcp_exclude")
+        if exclude_raw is None and "mcp_exclude" in raw:
+            logger.warning(
+                "Top-level 'mcp_exclude' in %s is deprecated and triggers MkDocs "
+                "'Unrecognised configuration name' warnings under --strict. Move "
+                "it under 'extra:' instead.",
+                config_path,
+            )
+            exclude_raw = raw.get("mcp_exclude")
+        exclusions = ExclusionRules.from_config(exclude_raw)
 
         # Navigation: explicit nav in mkdocs.yml always wins, then fall back
         # to .nav.yml files if awesome-nav plugin is used, then dir listing.
