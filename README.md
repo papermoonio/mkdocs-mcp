@@ -172,17 +172,27 @@ Returns the document title and a list of headings with level, text, and anchor.
 ## Excluding Documents
 
 Some markdown files are not worth exposing over MCP -- drafts, internal
-runbooks, generated scratch files. Add an `mcp_exclude` list to `mkdocs.yml`:
+runbooks, generated scratch files. Add an `mcp_exclude` list under `extra` in
+`mkdocs.yml`:
 
 ```yaml
 site_name: My Docs
 
-mcp_exclude:
-  - drafts/             # any directory named 'drafts', at any depth
-  - internal/**         # anchored: only 'internal/' at the docs root
-  - "*-scratch.md"      # by filename suffix, at any depth
-  - "!internal/public.md"  # re-include one file from a broader rule
+extra:
+  mcp_exclude:
+    - drafts/             # any directory named 'drafts', at any depth
+    - internal/**         # anchored: only 'internal/' at the docs root
+    - "*-scratch.md"      # by filename suffix, at any depth
+    - "!internal/public.md"  # re-include one file from a broader rule
 ```
+
+It lives under `extra` because this project isn't a registered MkDocs
+plugin, so MkDocs' own config schema has no way to know about
+`mcp_exclude` -- a bare top-level key trips `Unrecognised configuration
+name` warnings, which `mkdocs --strict` turns into a hard failure. `extra`
+is the one top-level key MkDocs leaves open for arbitrary data, so nesting
+there passes validation. (A bare top-level `mcp_exclude` still works for
+now as a deprecated fallback, with a warning logged.)
 
 Exclusions apply everywhere at once. An excluded document is absent from the
 navigation tree, never enters the search index, does not appear in
